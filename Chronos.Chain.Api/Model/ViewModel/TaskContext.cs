@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Chronos.Chain.Api.DbContext.Entities;
 
 namespace Chronos.Chain.Api.Model;
 
@@ -22,4 +23,6 @@ public class TaskContext
     [JsonPropertyName("timestamp")]
     public long Timestamp { get; set; }
 
+    [JsonPropertyName("status")]
+    public TaskState Status { get; set; }
 }

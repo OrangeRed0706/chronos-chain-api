@@ -1,5 +1,7 @@
+using Chronos.Chain.Api.DbContext;
 using Chronos.Chain.Api.Hub;
 using Chronos.Chain.Api.Worker;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +23,11 @@ builder.Services.AddCors(options =>
     }));
 
 builder.Services.AddHostedService<TaskHandler>();
+builder.Services.AddDbContext<ChronosDbContext>(optionsBuilder =>
+{
+    var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "chronos.db");
+    optionsBuilder.UseSqlite($"Data Source={dbPath}");
+});
 
 var app = builder.Build();
 app.UseCors("default");
