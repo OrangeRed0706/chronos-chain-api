@@ -1,0 +1,6 @@
+﻿services:
+  chronos.chain.api:
+    image: chronos.chain.api
+    build:
+      context: .
+      dockerfile: Chronos.Chain.Api/Dockerfile
