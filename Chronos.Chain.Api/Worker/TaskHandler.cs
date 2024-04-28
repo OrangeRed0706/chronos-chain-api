@@ -95,7 +95,6 @@ public class TaskHandler : BackgroundService
         {
             for (var i = 20; i <= 40; i++)
             {
-                await Task.Delay(random.Next(10, 50), cancellationToken);
                 taskContext.Status = TaskState.Running;
                 taskContext.ProgressPercentage = i;
                 var json = JsonSerializer.Serialize(taskContext);
@@ -123,7 +122,6 @@ public class TaskHandler : BackgroundService
         {
             for (var i = 40; i <= 100; i++)
             {
-                await Task.Delay(random.Next(100, 500), cancellationToken);
                 taskContext.Status = TaskState.Running;
                 taskContext.ProgressPercentage = i;
                 var json = JsonSerializer.Serialize(taskContext);
@@ -144,7 +142,6 @@ public class TaskHandler : BackgroundService
             await dbContext.SaveChangesAsync(cancellationToken);
             await _chatHubContext.Clients.All.ClientReceiveTaskMessage(JsonSerializer.Serialize(taskContext));
 
-            return;
         }
     }
 }

@@ -12,6 +12,7 @@ namespace Chronos.Chain.Api.Controllers;
 public class DeploymentController : ControllerBase
 {
     private readonly ILogger<DeploymentController> _logger;
+    private readonly IConfiguration _configuration;
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
     public DeploymentController(
@@ -20,6 +21,7 @@ public class DeploymentController : ControllerBase
         IServiceScopeFactory serviceScopeFactory)
     {
         _logger = logger;
+        _configuration = configuration;
         _serviceScopeFactory = serviceScopeFactory;
     }
 
@@ -55,24 +57,36 @@ public class DeploymentController : ControllerBase
         return Ok();
     }
 
-    [HttpPost("{id}/retry")]
-    public async Task<IActionResult> RetryTask(string id)
+    [HttpPost("retry")]
+    public async Task<IActionResult> RetryTask(TaskContext taskContext, CancellationToken cancellationToken = default)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
 
-        var taskInfo = await dbContext.TasksInfo.FirstOrDefaultAsync(x => x.Id == Guid.Parse(id));
+        var taskInfo = await dbContext.TasksInfo
+            .Where(x => x.Type == taskContext.Type)
+            .Where(x => x.Id == taskContext.Id)
+            .FirstOrDefaultAsync(x => x.Id == taskContext.Id, cancellationToken: cancellationToken);
         if (taskInfo == null)
         {
             return NotFound();
         }
+        if(taskInfo.TaskActionId != taskContext.ActionId)
+        {
+            _logger.LogWarning("Task action id not match");
+            return BadRequest();
+        }
 
-        await TaskHandler.TaskChannel.Writer.WriteAsync(taskInfo.BuildToTaskContext());
+        if (taskInfo.Status == TaskState.Completed)
+        {
+            return Ok("Task already completed");
+        }
+        await TaskHandler.TaskChannel.Writer.WriteAsync(taskInfo.BuildToTaskContext(), cancellationToken);
 
         return Ok();
     }
 
-    [HttpPut("{id}/confirm")]
+    [HttpPut("confirm")]
     public async Task<IActionResult> UpdateTask(TaskContext taskContext, CancellationToken cancellationToken = default)
     {
         using var scope = _serviceScopeFactory.CreateScope();
@@ -88,9 +102,10 @@ public class DeploymentController : ControllerBase
             return NotFound();
         }
 
-        if (taskInfo.TaskActionId == taskContext.ActionId)
+        if (taskInfo.TaskActionId > taskContext.ActionId)
         {
             _logger.LogWarning("Task already confirmed");
+            await TaskHandler.TaskChannel.Writer.WriteAsync(taskInfo.BuildToTaskContext(), cancellationToken);
             return Ok();
         }
 

@@ -358,3 +358,5 @@ MigrationBackup/
 
 # nohup
 nohup.out
+
+.DS_Store
