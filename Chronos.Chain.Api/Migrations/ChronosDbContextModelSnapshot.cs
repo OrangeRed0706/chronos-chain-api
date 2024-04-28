@@ -41,7 +41,13 @@ namespace Chronos.Chain.Api.Migrations
                     b.Property<short>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("TaskActionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Type")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

@@ -12,10 +12,12 @@ namespace Chronos.Chain.Api.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "TaskContexts",
+                name: "TasksInfo",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    TaskActionId = table.Column<int>(type: "INTEGER", nullable: false),
+                    Type = table.Column<int>(type: "INTEGER", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     Creator = table.Column<string>(type: "TEXT", nullable: false),
                     Description = table.Column<string>(type: "TEXT", nullable: false),
@@ -25,7 +27,7 @@ namespace Chronos.Chain.Api.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_TaskContexts", x => x.Id);
+                    table.PrimaryKey("PK_TasksInfo", x => x.Id);
                 });
         }
 
@@ -33,7 +35,7 @@ namespace Chronos.Chain.Api.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "TaskContexts");
+                name: "TasksInfo");
         }
     }
 }

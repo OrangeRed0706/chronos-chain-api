@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Chronos.Chain.Api.Migrations
 {
     [DbContext(typeof(ChronosDbContext))]
-    [Migration("20240428123842_Initial")]
+    [Migration("20240428140712_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -44,12 +44,18 @@ namespace Chronos.Chain.Api.Migrations
                     b.Property<short>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("TaskActionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Type")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
-                    b.ToTable("TaskContexts");
+                    b.ToTable("TasksInfo");
                 });
 #pragma warning restore 612, 618
         }

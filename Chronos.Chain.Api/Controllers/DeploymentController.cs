@@ -1,11 +1,8 @@
 using Chronos.Chain.Api.DbContext;
 using Chronos.Chain.Api.DbContext.Entities;
-using Chronos.Chain.Api.Hub;
-using Chronos.Chain.Api.Hub.Interface;
-using Chronos.Chain.Api.Model;
+using Chronos.Chain.Api.Model.ViewModel;
 using Chronos.Chain.Api.Worker;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace Chronos.Chain.Api.Controllers;
@@ -15,146 +12,120 @@ namespace Chronos.Chain.Api.Controllers;
 public class DeploymentController : ControllerBase
 {
     private readonly ILogger<DeploymentController> _logger;
-    private readonly IConfiguration _configuration;
     private readonly IServiceScopeFactory _serviceScopeFactory;
-    private readonly IHubContext<ChatHub, IChatHub> _chatHubContext;
 
     public DeploymentController(
         ILogger<DeploymentController> logger,
         IConfiguration configuration,
-        IServiceScopeFactory serviceScopeFactory,
-        IHubContext<ChatHub, IChatHub> chatHubContext)
+        IServiceScopeFactory serviceScopeFactory)
     {
         _logger = logger;
-        _configuration = configuration;
         _serviceScopeFactory = serviceScopeFactory;
-        _chatHubContext = chatHubContext;
     }
 
     [HttpGet(Name = "")]
-    public async Task<IActionResult> GetTasks()
+    public async Task<IActionResult> GetTasks(CancellationToken cancellationToken = default)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
 
-        var taskContexts = await dbContext.TasksInfo.Select(x => new TaskContext
-        {
-            Id = x.Id,
-            Name = x.Name,
-            Creator = x.Creator,
-            Description = x.Description,
-            ProgressPercentage = x.ProgressPercentage,
-            Timestamp = x.Timestamp,
-            Status = x.Status,
-        }).ToListAsync();
-
+        var taskContexts = await dbContext.TasksInfo.Select(x => x.BuildToTaskContext()).ToListAsync(cancellationToken: cancellationToken);
         return Ok(taskContexts);
     }
 
     [HttpPost(Name = "")]
-    public async Task<IActionResult> CreateTask()
+    public async Task<IActionResult> CreateTaskTest(CancellationToken cancellationToken = default)
     {
-        var random = new Random();
-        var createUser = new string[] { "lynn", "jim" };
-        Enumerable
-            .Range(0, 5)
-            .Select(i => new TaskContext
-            {
-                Id = Guid.NewGuid(),
-                Name = $"Task:{i}",
-                Creator = createUser[random.Next(0, 2)],
-                Description = "Task Description",
-            })
-            .ToList()
-            .ForEach(async taskContext =>
-            {
-                for (var i = 0; i <= 100; i++)
-                {
-                    taskContext.ProgressPercentage = i;
-                    taskContext.Timestamp = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    if (i == 0)
-                    {
-                        using (var scope = _serviceScopeFactory.CreateScope())
-                        {
-                            var _dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
-                            _dbContext.TasksInfo.Add(new TaskInfo
-                            {
-                                Id = taskContext.Id,
-                                Name = taskContext.Name,
-                                Creator = taskContext.Creator,
-                                Description = taskContext.Description,
-                                ProgressPercentage = taskContext.ProgressPercentage,
-                                Timestamp = taskContext.Timestamp,
-                                Status = TaskState.Created,
-                            });
-                            await _dbContext.SaveChangesAsync();
-                        }
-                    }
-                    else if (i == 100)
-                    {
-                        taskContext.Status = TaskState.Completed;
-                        using (var scope = _serviceScopeFactory.CreateScope())
-                        {
-                            await using var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
-
-                            var taskInfo = await dbContext.TasksInfo.FirstOrDefaultAsync(x => x.Id == taskContext.Id);
-                            if (taskInfo == null)
-                            {
-                                return;
-                            }
-
-                            taskInfo.Status = TaskState.Completed;
-                            taskInfo.ProgressPercentage = 100;
-                            dbContext.Update(taskInfo);
-                            await dbContext.SaveChangesAsync();
-                        }
-                    }
-                    else
-                    {
-                        taskContext.Status = TaskState.Running;
-                    }
-
-                    await TaskHandler.TaskChannel.Writer.WriteAsync(taskContext);
-                    await Task.Delay(random.Next(100, 500));
-                }
-            });
+        using var scope = _serviceScopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
+        var taskContext = new TaskContext
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Task",
+            Creator = "lynn",
+            Description = "Test Task Description",
+            ProgressPercentage = 0,
+            Timestamp = DateTimeOffset.Now.ToUnixTimeMilliseconds(),
+            Status = TaskState.Created,
+            Type = TaskType.Test,
+        };
+        dbContext.TasksInfo.Add(taskContext.BuildToTaskInfo());
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await TaskHandler.TaskChannel.Writer.WriteAsync(taskContext, cancellationToken);
         return Ok();
     }
 
-    [HttpPut("verify/{id}")]
-    public async Task<IActionResult> UpdateTask(Guid id)
+    [HttpPost("{id}/retry")]
+    public async Task<IActionResult> RetryTask(string id)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
 
-        var taskInfo = await dbContext.TasksInfo.FirstOrDefaultAsync(x => x.Id == id && x.Status == TaskState.WaitingVerification);
+        var taskInfo = await dbContext.TasksInfo.FirstOrDefaultAsync(x => x.Id == Guid.Parse(id));
         if (taskInfo == null)
         {
             return NotFound();
         }
-        taskInfo.Status = TaskState.Running;
-        dbContext.Update(taskInfo);
-        await dbContext.SaveChangesAsync();
-        await TaskHandler.TaskChannel.Writer.WriteAsync(new TaskContext
-        {
-            Id = taskInfo.Id,
-            Name = taskInfo.Name,
-            Creator = taskInfo.Creator,
-            Description = taskInfo.Description,
-            ProgressPercentage = taskInfo.ProgressPercentage,
-            Timestamp = taskInfo.Timestamp,
-            Status = taskInfo.Status,
-        });
+
+        await TaskHandler.TaskChannel.Writer.WriteAsync(taskInfo.BuildToTaskContext());
+
         return Ok();
     }
 
-    [HttpDelete("all" )]
+    [HttpPut("{id}/confirm")]
+    public async Task<IActionResult> UpdateTask(TaskContext taskContext, CancellationToken cancellationToken = default)
+    {
+        using var scope = _serviceScopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
+
+        var taskInfo = await dbContext.TasksInfo
+            .Where(x => x.Type == taskContext.Type)
+            .Where(x => x.Id == taskContext.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (taskInfo == null)
+        {
+            _logger.LogWarning("Task not found");
+            return NotFound();
+        }
+
+        if (taskInfo.TaskActionId == taskContext.ActionId)
+        {
+            _logger.LogWarning("Task already confirmed");
+            return Ok();
+        }
+
+        taskInfo.Status = TaskState.Running;
+        taskInfo.TaskActionId++;
+        dbContext.Update(taskInfo);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await TaskHandler.TaskChannel.Writer.WriteAsync(taskInfo.BuildToTaskContext(), cancellationToken);
+        return Ok();
+    }
+
+    [HttpDelete("all")]
     public async Task<IActionResult> DeleteTasks()
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
 
         dbContext.TasksInfo.RemoveRange(dbContext.TasksInfo);
+        await dbContext.SaveChangesAsync();
+        return Ok();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteTask(string id)
+    {
+        using var scope = _serviceScopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ChronosDbContext>();
+
+        var taskInfo = await dbContext.TasksInfo.FirstOrDefaultAsync(x => x.Id == Guid.Parse(id));
+        if (taskInfo == null)
+        {
+            return NotFound();
+        }
+
+        dbContext.TasksInfo.Remove(taskInfo);
         await dbContext.SaveChangesAsync();
         return Ok();
     }
